@@ -163,34 +163,33 @@ elif page == "🗃️ 資料庫管理":
         st.subheader("批次匯入 (Excel)")
         st.info("支援欄位：NO, 型號, 牌價, 經銷價, 規格")
         uploaded_file = st.file_uploader("上傳 Excel", type=["xlsx", "csv"])
-        if uploaded_file:
-            if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
-            else: df = pd.read_excel(uploaded_file)
-            
-            st.write("預覽 (前5筆):")
-            # 隱藏 NO 欄位
-            preview_df = df.head().copy()
-            cols_hide = [c for c in preview_df.columns if "NO" in str(c).upper() or "訂購" in str(c)]
-            st.dataframe(preview_df.drop(columns=cols_hide, errors='ignore'))
-            
-            if st.button("🚀 確認匯入"):
-                with st.spinner("寫入中..."):
-                    success, msg = database.batch_import_products(df)
-                    if success: st.success(msg); time.sleep(2); st.rerun()
-                    else: st.error(msg)
-
-        st.divider()
-        st.subheader("手動新增")
-        with st.form("add_prod"):
-            c1, c2 = st.columns([3, 2])
-            nm = c1.text_input("產品名稱")
-            sp = c1.text_input("規格")
-            pr = c2.number_input("價格", step=100)
-            if st.form_submit_button("新增"):
-                if nm: database.add_product(nm, sp, pr); st.success("已新增"); st.rerun()
         
-        st.subheader("現有產品")
-        st.dataframe(database.get_products(), use_container_width=True)
+        if uploaded_file:
+            try:
+                if uploaded_file.name.endswith('.csv'): 
+                    df = pd.read_csv(uploaded_file)
+                else: 
+                    df = pd.read_excel(uploaded_file)
+                
+                st.write("預覽 (前5筆):")
+                # 隱藏 NO 欄位
+                preview_df = df.head().copy()
+                cols_hide = [c for c in preview_df.columns if "NO" in str(c).upper() or "訂購" in str(c)]
+                st.dataframe(preview_df.drop(columns=cols_hide, errors='ignore'))
+                
+                if st.button("🚀 確認匯入"):
+                    with st.spinner("寫入中..."):
+                        success, msg = database.batch_import_products(df)
+                    
+                    # 注意：這兩行必須縮排在 button 的 if 裡面，但要在 spinner 外面
+                    if success: 
+                        st.success(msg)
+                        time.sleep(2)
+                        st.rerun()
+                    else: 
+                        st.error(msg)
+            except Exception as e:
+                st.error(f"讀取錯誤: {e}")
 
     with tab2:
         with st.form("add_cli"):
