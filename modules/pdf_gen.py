@@ -5,17 +5,15 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib import colors
 import os
-from datetime import datetime
 
-# 註冊字型
+# 註冊字型 (解決中文亂碼)
 def register_fonts():
     font_dir = "fonts"
     try:
-        # 確保字型檔名與您資料夾內的一致
         pdfmetrics.registerFont(TTFont('NotoSans', os.path.join(font_dir, 'NotoSansTC-Regular.ttf')))
         pdfmetrics.registerFont(TTFont('NotoSans-Bold', os.path.join(font_dir, 'NotoSansTC-Bold.ttf')))
-    except Exception as e:
-        print(f"Font Error: {e}")
+    except:
+        pass 
 
 def create_quotation_pdf(data, show_stamp=True):
     register_fonts()
@@ -24,39 +22,32 @@ def create_quotation_pdf(data, show_stamp=True):
     width, height = A4
     
     # --- 1. 頁首與 LOGO ---
-    # 嘗試繪製 LOGO (如果檔案存在)
     if os.path.exists("assets/LOGO.png"):
-        # 調整 width/height 以符合您的 LOGO 比例
         c.drawImage("assets/LOGO.png", 30, height - 60, width=140, height=35, mask='auto')
     else:
-        # 沒圖時的替代文字
         c.setFont("NotoSans-Bold", 18)
         c.drawString(30, height - 50, "士林電機 Shihlin Electric")
 
     c.setFont("NotoSans-Bold", 24)
     c.drawRightString(width - 30, height - 50, "報 價 單")
     
-    # 畫分隔線
     c.setLineWidth(1)
     c.line(30, height - 70, width - 30, height - 70)
 
     # --- 2. 客戶與單號資訊 ---
     c.setFont("NotoSans", 11)
-    # 左側：客戶資訊
     text_y = height - 100
     c.drawString(30, text_y, f"客戶名稱：{data['client_name']}")
-    c.drawString(30, text_y - 20, f"專案名稱：2401三菱PLC單次專案 (範例)") # 這裡未來可改為動態
-    c.drawString(30, text_y - 40, f"聯 絡 人：(請填寫)") # 需從資料庫抓取
-
-    # 右側：單號資訊
+    c.drawString(30, text_y - 20, f"專案名稱：2401三菱PLC單次專案 (範例)") 
+    
     c.drawString(350, text_y,     f"報價單號：{data['id']}")
     c.drawString(350, text_y - 20, f"報價日期：{data['date']}")
-    c.drawString(350, text_y - 40, f"營 業 員：曾維崧") # 這裡可改為變數
+    c.drawString(350, text_y - 40, f"營 業 員：曾維崧") 
 
     # --- 3. 表格標題 ---
     table_y = height - 170
     c.setFillColor(colors.lightgrey)
-    c.rect(30, table_y - 5, width - 60, 20, fill=1, stroke=0) # 標題底色
+    c.rect(30, table_y - 5, width - 60, 20, fill=1, stroke=0) 
     c.setFillColor(colors.black)
     
     c.setFont("NotoSans-Bold", 11)
@@ -77,25 +68,24 @@ def create_quotation_pdf(data, show_stamp=True):
             price = float(item['price'])
             qty = int(item['qty'])
         except:
-            price = 0
-            qty = 0
+            price, qty = 0, 0
             
         subtotal = price * qty
         total_amount += subtotal
         
-        # 換頁邏輯 (如果太長)
+        # 換頁邏輯
         if y < 200: 
             c.drawString(width/2, 30, "- 接下頁 -")
             c.showPage()
-            register_fonts() # 新頁面需重設字型
-            y = height - 50 # 重置 Y 軸
+            register_fonts()
+            y = height - 50 
         
         c.drawString(40, y, str(i + 1))
-        c.drawString(80, y, name) # 若品名太長可能需要截斷或換行處理
+        c.drawString(80, y, name) 
         c.drawString(320, y, str(qty))
         c.drawString(380, y, f"{price:,.0f}")
         c.drawString(480, y, f"{subtotal:,.0f}")
-        c.line(30, y - 5, width - 30, y - 5) # 分隔線
+        c.line(30, y - 5, width - 30, y - 5)
         y -= 25
 
     # --- 5. 金額統計 (稅額計算) ---
@@ -112,7 +102,6 @@ def create_quotation_pdf(data, show_stamp=True):
     c.drawRightString(550, y, f"報價金額總計： {grand_total:,.0f}")
     
     # --- 6. 頁尾條款與簽章 ---
-    # 確保頁尾不會蓋到表格，如果表格太長，頁尾自動換頁
     if y < 150:
         c.showPage()
         register_fonts()
@@ -123,7 +112,6 @@ def create_quotation_pdf(data, show_stamp=True):
     c.drawString(30, footer_y, "說明事項：")
     c.drawString(30, footer_y - 15, "1. 本報價單有效期限：15天。")
     c.drawString(30, footer_y - 30, "2. 交貨地點：國內卡車可達之地面，不含安裝。")
-    c.drawString(30, footer_y - 45, "3. 付款方式：月結30天 (範例)。")
     
     # 蓋章區
     c.setFont("NotoSans-Bold", 10)
@@ -132,10 +120,8 @@ def create_quotation_pdf(data, show_stamp=True):
     c.drawString(350, footer_y - 30, "統一編號：11039306")
     
     if show_stamp and os.path.exists("assets/stamp.png"):
-        # 印章位置微調
         c.drawImage("assets/stamp.png", 420, footer_y - 60, width=100, height=80, mask='auto')
 
-    # QR Code (如果有的話)
     if os.path.exists("assets/qrcode.png"):
         c.drawImage("assets/qrcode.png", width - 80, 20, width=50, height=50)
 

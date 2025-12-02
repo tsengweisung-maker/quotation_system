@@ -4,7 +4,7 @@ import time
 from modules import calculator, database, pdf_gen, ui_components
 
 # 設定頁面
-st.set_page_config(page_title="報價管理系統", layout="wide")
+st.set_page_config(page_title="報價管理系統", layout="wide", page_icon="💼")
 
 # --- 🔐 1. 門禁系統 ---
 def check_password():
@@ -14,6 +14,7 @@ def check_password():
     st.header("🔒 請登入系統")
     password = st.text_input("請輸入授權密碼", type="password")
     
+    # 預設密碼 1234
     correct_password = st.secrets.get("APP_PASSWORD", "1234")
     
     if st.button("登入"):
@@ -28,7 +29,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 主程式
+# 主程式 (登入後)
 # ==========================================
 
 calculator.render_simple_calculator()
@@ -39,6 +40,7 @@ page = st.sidebar.radio("Go to", ["🏠 首頁概覽", "📝 新增報價單", "
 # --- 頁面 0: 首頁概覽 ---
 if page == "🏠 首頁概覽":
     st.title("📊 營運儀表板")
+    st.write("歡迎使用報價管理系統。")
     with st.spinner("更新數據中..."):
         q_count, total_amt = database.get_dashboard_stats()
     col1, col2 = st.columns(2)
