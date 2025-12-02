@@ -181,15 +181,24 @@ elif page == "🗃️ 資料庫管理":
             except Exception as e:
                 st.error(f"讀取錯誤: {e}")
 
-        st.divider()
-        st.subheader("手動新增")
+                st.subheader("手動新增")
         with st.form("add_prod"):
             c1, c2 = st.columns([3, 2])
             nm = c1.text_input("產品名稱")
             sp = c1.text_input("規格")
             pr = c2.number_input("價格", step=100)
+            
             if st.form_submit_button("新增"):
-                if nm: database.add_product(nm, sp, pr); st.success("已新增"); st.rerun()
+                if nm: 
+                    if database.add_product(nm, sp, pr):
+                        st.success("✅ 已新增！")
+                        time.sleep(1) # 停頓一下讓使用者看到成功訊息
+                        st.rerun()
+                    else:
+                        # 【修正】如果失敗，這裡會搭配 database.py 的錯誤訊息一起顯示
+                        st.error("新增失敗，請檢查上方錯誤訊息 (通常是 RLS 鎖定)")
+                else:
+                    st.warning("請輸入產品名稱")
         
         st.subheader("現有產品")
         st.dataframe(database.get_products(), use_container_width=True)

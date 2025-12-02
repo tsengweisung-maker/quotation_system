@@ -61,6 +61,8 @@ def add_client(name, tax_id, contact, phone, address):
         supabase.table("clients").insert(data).execute()
         return True
     except Exception as e:
+        # 【修正】把錯誤顯示出來
+        st.error(f"❌ 新增客戶失敗: {str(e)}")
         return False
 
 def add_product(name, spec, price):
@@ -74,6 +76,8 @@ def add_product(name, spec, price):
         supabase.table("products").insert(data).execute()
         return True
     except Exception as e:
+        # 【修正】把錯誤顯示出來
+        st.error(f"❌ 新增產品失敗: {str(e)}")
         return False
 
 # --- 批次匯入功能 (Excel) ---
