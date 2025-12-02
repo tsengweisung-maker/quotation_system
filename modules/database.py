@@ -182,3 +182,20 @@ def save_quotation(client_id, date, items, total_amount):
         
     except Exception as e:
         return False, str(e)
+
+# --- 儀表板統計功能 ---
+def get_dashboard_stats():
+    if not supabase: return 0, 0
+    try:
+        # 1. 取得報價單總數
+        res_count = supabase.table("quotations").select("id", count="exact").execute()
+        total_quotes = res_count.count
+        
+        # 2. 取得所有明細總金額 (簡易計算)
+        # 注意：資料量大時建議改用 SQL View 或 RPC 處理，這裡先用 Python 算
+        res_items = supabase.table("quotation_items").select("unit_price, quantity").execute()
+        total_amount = sum([item['unit_price'] * item['quantity'] for item in res_items.data])
+        
+        return total_quotes, total_amount
+    except:
+        return 0, 0
