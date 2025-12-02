@@ -118,9 +118,58 @@ if page == "📝 新增報價單":
             mime="application/pdf"
         )
 
-# --- 頁面 2 & 3 (暫時留空，先跑通主流程) ---
-elif page == "📊 歷史定價比較":
-    ui_components.render_price_analysis_page()
-
 elif page == "🗃️ 資料庫管理":
-    st.info("資料庫管理功能開發中...")
+    st.title("🗃️ 資料庫管理")
+    
+    tab1, tab2 = st.tabs(["📦 產品管理", "👥 客戶管理"])
+    
+    # --- 產品管理頁籤 ---
+    with tab1:
+        st.subheader("新增產品")
+        with st.form("add_product_form", clear_on_submit=True):
+            col1, col2 = st.columns([3, 2])
+            new_p_name = col1.text_input("產品型號/名稱")
+            new_p_spec = col1.text_input("規格說明")
+            new_p_price = col2.number_input("經銷牌價 (成本)", min_value=0, step=100)
+            
+            if st.form_submit_button("新增產品"):
+                if new_p_name and new_p_price >= 0:
+                    if database.add_product(new_p_name, new_p_spec, new_p_price):
+                        st.success(f"產品 {new_p_name} 已新增！")
+                        st.rerun() # 重新整理頁面顯示最新資料
+                    else:
+                        st.error("新增失敗，請檢查網路")
+                else:
+                    st.warning("請輸入產品名稱")
+        
+        st.divider()
+        st.subheader("現有產品列表")
+        # 顯示資料庫現有內容
+        current_products = database.get_products()
+        if current_products:
+            st.dataframe(current_products, use_container_width=True)
+
+    # --- 客戶管理頁籤 ---
+    with tab2:
+        st.subheader("新增客戶")
+        with st.form("add_client_form", clear_on_submit=True):
+            c_name = st.text_input("公司名稱 (必填)")
+            col1, col2 = st.columns(2)
+            c_tax = col1.text_input("統一編號")
+            c_contact = col2.text_input("聯絡人")
+            c_phone = col1.text_input("電話")
+            c_addr = st.text_input("地址")
+            
+            if st.form_submit_button("新增客戶"):
+                if c_name:
+                    if database.add_client(c_name, c_tax, c_contact, c_phone, c_addr):
+                        st.success(f"客戶 {c_name} 已新增！")
+                        st.rerun()
+                else:
+                    st.warning("請輸入公司名稱")
+                    
+        st.divider()
+        st.subheader("現有客戶列表")
+        current_clients = database.get_clients()
+        if current_clients:
+            st.dataframe(current_clients, use_container_width=True)
