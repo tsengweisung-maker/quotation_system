@@ -190,12 +190,14 @@ elif page == "🗃️ 資料庫管理":
             
             if st.form_submit_button("新增"):
                 if nm: 
-                    if database.add_product(nm, sp, pr):
+                    # 先檢查資料庫物件是否存在
+                    if not database.supabase:
+                        st.error("❌ 無法寫入：資料庫未連線。請嘗試重啟程式 (Kill Terminal) 以讀取 secrets.toml。")
+                    elif database.add_product(nm, sp, pr):
                         st.success("✅ 已新增！")
-                        time.sleep(1) # 停頓一下讓使用者看到成功訊息
+                        time.sleep(1) 
                         st.rerun()
                     else:
-                        # 【修正】如果失敗，這裡會搭配 database.py 的錯誤訊息一起顯示
                         st.error("新增失敗，請檢查上方錯誤訊息 (通常是 RLS 鎖定)")
                 else:
                     st.warning("請輸入產品名稱")
