@@ -14,7 +14,6 @@ def check_password():
     st.header("🔒 請登入系統")
     password = st.text_input("請輸入授權密碼", type="password")
     
-    # 預設密碼 1234
     correct_password = st.secrets.get("APP_PASSWORD", "1234")
     
     if st.button("登入"):
@@ -29,7 +28,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 主程式 (登入後)
+# 主程式
 # ==========================================
 
 calculator.render_simple_calculator()
@@ -40,29 +39,37 @@ page = st.sidebar.radio("Go to", ["🏠 首頁概覽", "📝 新增報價單", "
 # --- 頁面 0: 首頁概覽 ---
 if page == "🏠 首頁概覽":
     st.title("📊 營運儀表板")
-    st.write("歡迎使用報價管理系統。")
-    with st.spinner("更新數據中..."):
-        q_count, total_amt = database.get_dashboard_stats()
-    col1, col2 = st.columns(2)
-    col1.metric("總報價單數", f"{q_count} 張")
-    col2.metric("累積報價金額", f"${total_amt:,.0f}")
+    
+    # 檢查連線
+    if not database.supabase:
+        st.error("🔴 資料庫未連線！請檢查 Secrets 設定或重啟應用程式。")
+    else:
+        with st.spinner("更新數據中..."):
+            q_count, total_amt = database.get_dashboard_stats()
+        col1, col2 = st.columns(2)
+        col1.metric("總報價單數", f"{q_count} 張")
+        col2.metric("累積報價金額", f"${total_amt:,.0f}")
 
 # --- 頁面 1: 新增報價單 ---
 elif page == "📝 新增報價單":
     st.title("📝 新增報價單")
     
+    # 1. 取得資料
     clients_list = database.get_clients()
     raw_products = database.get_products()
     
+    # 2. 防呆處理 (避免 AttributeError)
+    products_map = {}
     if raw_products:
         products_map = {item['name']: item['dealer_price'] for item in raw_products}
-    else:
-        products_map = {}
-
-    if not products_map:
-        st.warning("⚠️ 目前資料庫中沒有產品資料！請先前往左側「🗃️ 資料庫管理」新增產品。")
-        products_map = {"(無產品)": 0}
     
+    # 如果沒產品，顯示假資料並警告，防止當機
+    if not products_map:
+        st.warning("⚠️ 無產品資料或資料庫未連線。請先至「資料庫管理」新增產品。")
+        # 給一個假的選項，讓下面的程式碼有東西可以跑，不會崩潰
+        products_map = {"(尚無產品)": 0}
+        
+    # 3. 介面顯示
     with st.container():
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
@@ -73,7 +80,7 @@ elif page == "📝 新增報價單":
                     client_id = int(selected_client_str.split(":")[0])
                     client_name = selected_client_str.split(":")[1].strip()
             else:
-                st.warning("請先新增客戶資料")
+                st.warning("查無客戶資料")
                 client_name = ""
         
         with col2:
@@ -83,8 +90,11 @@ elif page == "📝 新增報價單":
 
     st.divider()
 
+    # 初始化 (這裡就是您之前報錯的地方，現在加上了保護)
     if "rows" not in st.session_state:
-        st.session_state.rows = [{"product": list(products_map.keys())[0], "price": 0, "qty": 1}]
+        # 使用 products_map 的第一個鍵，因為我們上面已經保證它至少有一個 "(尚無產品)"
+        first_prod = list(products_map.keys())[0]
+        st.session_state.rows = [{"product": first_prod, "price": 0, "qty": 1}]
 
     h1, h2, h3, h4, h5, h6 = st.columns([0.5, 3, 2, 2, 1.5, 1])
     h2.text("產品名稱")
@@ -96,7 +106,9 @@ elif page == "📝 新增報價單":
         
         with c2:
             current_prod = row["product"]
-            if current_prod not in products_map: current_prod = list(products_map.keys())[0]
+            if current_prod not in products_map: 
+                current_prod = list(products_map.keys())[0]
+            
             prod_name = st.selectbox(f"p_{i}", list(products_map.keys()), index=list(products_map.keys()).index(current_prod), key=f"p_{i}", label_visibility="collapsed")
             dealer_ref_price = products_map[prod_name]
             
@@ -128,7 +140,7 @@ elif page == "📝 新增報價單":
     st.divider()
 
     if st.button("💾 儲存並生成 PDF", type="primary", use_container_width=True):
-        if not client_name or "(無產品)" in [r['product'] for r in st.session_state.rows]:
+        if not client_name or "(尚無產品)" in [r['product'] for r in st.session_state.rows]:
             st.error("資料不完整，無法存檔")
             st.stop()
 
@@ -150,6 +162,11 @@ elif page == "📊 歷史定價比較":
 # --- 頁面 3: 資料庫管理 ---
 elif page == "🗃️ 資料庫管理":
     st.title("🗃️ 資料庫管理")
+    
+    # 檢查連線狀態
+    if not database.supabase:
+        st.error("🔴 資料庫未連線！無法執行新增操作。請檢查 Secrets 設定。")
+    
     tab1, tab2 = st.tabs(["📦 產品管理", "👥 客戶管理"])
     
     with tab1:
@@ -181,26 +198,20 @@ elif page == "🗃️ 資料庫管理":
             except Exception as e:
                 st.error(f"讀取錯誤: {e}")
 
-                st.subheader("手動新增")
+        st.divider()
+        st.subheader("手動新增")
         with st.form("add_prod"):
             c1, c2 = st.columns([3, 2])
             nm = c1.text_input("產品名稱")
             sp = c1.text_input("規格")
             pr = c2.number_input("價格", step=100)
-            
             if st.form_submit_button("新增"):
                 if nm: 
-                    # 先檢查資料庫物件是否存在
-                    if not database.supabase:
-                        st.error("❌ 無法寫入：資料庫未連線。請嘗試重啟程式 (Kill Terminal) 以讀取 secrets.toml。")
-                    elif database.add_product(nm, sp, pr):
+                    if database.add_product(nm, sp, pr):
                         st.success("✅ 已新增！")
-                        time.sleep(1) 
                         st.rerun()
                     else:
-                        st.error("新增失敗，請檢查上方錯誤訊息 (通常是 RLS 鎖定)")
-                else:
-                    st.warning("請輸入產品名稱")
+                        st.error("新增失敗 (可能原因：資料庫連線中斷 或 RLS 鎖定)")
         
         st.subheader("現有產品")
         st.dataframe(database.get_products(), use_container_width=True)
@@ -211,6 +222,11 @@ elif page == "🗃️ 資料庫管理":
             tax = st.text_input("統一編號")
             cont = st.text_input("聯絡人")
             if st.form_submit_button("新增"):
-                if nm: database.add_client(nm, tax, cont, "", ""); st.success("已新增"); st.rerun()
+                if nm: 
+                    if database.add_client(nm, tax, cont, "", ""):
+                        st.success("✅ 已新增！")
+                        st.rerun()
+                    else:
+                        st.error("新增失敗")
         st.subheader("現有客戶")
         st.dataframe(database.get_clients(), use_container_width=True)
