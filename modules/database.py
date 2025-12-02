@@ -177,39 +177,58 @@ def get_dashboard_stats():
 def batch_import_products(df):
     """
     將 Pandas DataFrame 批次寫入 products 表
-    預期 Excel 欄位: ['品名', '規格', '價格']
+    支援格式: [NO., 型號, 牌價, 經銷價, 規格, 訂購品(V)]
     """
     if not supabase: return False, "資料庫未連線"
     
     try:
-        # 1. 欄位對照 (Excel中文 -> 資料庫英文)
-        # 為了容錯，我們允許使用者欄位名稱有一點點誤差
-        rename_map = {
-            "品名": "name", "產品名稱": "name", "產品": "name",
-            "規格": "spec", "規格說明": "spec",
-            "價格": "dealer_price", "單價": "dealer_price", "成本": "dealer_price", "經銷價": "dealer_price"
-        }
-        
-        # 重新命名欄位
-        df = df.rename(columns=rename_map)
-        
-        # 2. 檢查必要欄位是否存在
+        # 0. 清理欄位名稱 (去除前後空白，避免 "型號 " 這種情況)
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # 1. 智慧欄位對照 (優先順序邏輯)
+        # 處理【產品名稱】：優先找 '型號'，沒有才找 '品名'
+        if '型號' in df.columns:
+            df = df.rename(columns={'型號': 'name'})
+        elif '品名' in df.columns:
+            df = df.rename(columns={'品名': 'name'})
+            
+        # 處理【規格】：找 '規格'
+        if '規格' in df.columns:
+            df = df.rename(columns={'規格': 'spec'})
+            
+        # 處理【價格】：優先找 '牌價' (做為基準價)，如果沒有才找 '經銷價' 或 '單價'
+        # 注意：我們只存一個價格進資料庫做為「建議售價(dealer_price)」
+        if '牌價' in df.columns:
+            df = df.rename(columns={'牌價': 'dealer_price'})
+        elif '經銷價' in df.columns:
+            df = df.rename(columns={'經銷價': 'dealer_price'})
+        elif '單價' in df.columns:
+            df = df.rename(columns={'單價': 'dealer_price'})
+
+        # 2. 檢查轉換後是否有必要欄位
         required_cols = ["name", "dealer_price"]
         if not all(col in df.columns for col in required_cols):
-            return False, f"Excel 缺少必要欄位，請確保有包含：{required_cols} (或對應的中文)"
+            return False, f"欄位對應失敗，請確認 Excel 包含：型號、牌價 (或經銷價)"
             
-        # 3. 補上選填欄位 (如果沒填規格，就補空字串)
+        # 3. 補上選填欄位 (如果沒規格就補空)
         if "spec" not in df.columns:
             df["spec"] = ""
             
-        # 4. 轉換資料格式 (Pandas 轉 List of Dicts)
-        # 只取我們需要的欄位，避免寫入錯誤
+        # 4. 資料清理 (處理 NaN 空值，避免資料庫報錯)
+        df['name'] = df['name'].astype(str)
+        df['spec'] = df['spec'].fillna("").astype(str)
+        df['dealer_price'] = pd.to_numeric(df['dealer_price'], errors='coerce').fillna(0)
+
+        # 5. 轉換資料格式 (只取資料庫要的 3 個欄位，自動過濾掉 NO. 和 訂購品)
         records = df[["name", "spec", "dealer_price"]].to_dict(orient="records")
         
-        # 5. 寫入 Supabase
+        # 6. 寫入 Supabase
         supabase.table("products").insert(records).execute()
         
         return True, f"成功匯入 {len(records)} 筆產品！"
+        
+    except Exception as e:
+        return False, f"匯入錯誤: {str(e)}"
         
     except Exception as e:
         return False, str(e)

@@ -221,6 +221,26 @@ elif page == "🗃️ 資料庫管理":
                 else:
                     df = pd.read_excel(uploaded_file)
                 
+                # --- 【新增這段：顯示預覽過濾】 ---
+                st.write("預覽資料 (前 5 筆):")
+                
+                # 複製一份來顯示，不要改到原始資料
+                preview_df = df.head().copy()
+                
+                # 找出要隱藏的欄位 (包含 NO., No., 訂購品...)
+                cols_to_hide = [c for c in preview_df.columns if "NO" in str(c).upper() or "訂購品" in str(c)]
+                
+                # 從預覽表中刪除這些欄位
+                preview_df = preview_df.drop(columns=cols_to_hide, errors='ignore')
+                
+                # 顯示乾淨的表格
+                st.dataframe(preview_df)
+                # --------------------------------
+                
+                # 確認匯入按鈕 (這邊傳入原始 df，因為資料庫處理邏輯在 database.py 裡已經寫好了)
+                if st.button("🚀 確認匯入資料庫", type="primary"):
+                    with st.spinner("正在寫入資料庫..."):
+                
                 # 顯示預覽
                 st.write("預覽資料 (前 5 筆):")
                 st.dataframe(df.head())
