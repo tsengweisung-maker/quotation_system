@@ -59,24 +59,51 @@ def add_product(name, spec, price):
         st.error(f"新增失敗: {e}")
         return False
 
-# 取得歷史紀錄 (給彈出視窗用)
-def fetch_history_items(client_name, product_name, offset=0, limit=5):
-    if not supabase: return [], False
-    try:
-        # 這裡需對應您 Supabase 實際的資料表結構
-        # 先簡單實作：搜尋報價明細
-        response = supabase.table("quotation_items")\
-            .select("*")\
-            .eq("product_name", product_name)\
-            .range(offset, offset + limit)\
-            .execute()
-        
-        data = response.data
-        has_more = len(data) == limit
-        return data, has_more
-    except:
-        return [], False
+# --- 歷史資料查詢 (進階版) ---
 
+def search_product_history(product_keyword, offset=0, limit=10):
+    """
+    搜尋產品歷史報價 (關聯查詢：明細 -> 主表 -> 客戶)
+    """
+    if not supabase: return [], False
+    
+    try:
+        # 這是 Supabase 的強大之處：可以直接透過關聯抓取 nested data
+        # 我們要抓：明細(*), 對應的主表(日期, 單號), 以及主表對應的客戶(名稱)
+        response = supabase.table("quotation_items")\
+            .select("*, quotations(quote_date, quote_no, clients(name))")\
+            .ilike("product_name", f"%{product_keyword}%")\
+            .order("id", desc=True)\
+            .range(offset, offset + limit - 1)\
+            .execute()
+            
+        data = response.data
+        
+        # 整理資料格式 (扁平化)
+        formatted_data = []
+        for item in data:
+            # 防呆：確保關聯資料存在
+            q_data = item.get('quotations') or {}
+            c_data = q_data.get('clients') or {}
+            
+            formatted_data.append({
+                "日期": q_data.get('quote_date', 'N/A'),
+                "單號": q_data.get('quote_no', 'N/A'),
+                "客戶": c_data.get('name', '未知客戶'),
+                "產品": item['product_name'],
+                "數量": item['quantity'],
+                "單價": item['unit_price'],
+                "經銷價": item.get('dealer_price_snapshot', 0)
+            })
+            
+        # 判斷是否還有更多資料 (如果回傳筆數 < limit，代表沒了)
+        has_more = len(data) == limit
+        
+        return formatted_data, has_more
+        
+    except Exception as e:
+        st.error(f"查詢錯誤: {e}")
+        return [], False
 
 # --- 新增功能：報價單存檔與編號 ---
 

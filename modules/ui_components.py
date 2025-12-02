@@ -3,99 +3,154 @@ import pandas as pd
 import time
 from modules import database
 
-# --- 1. 彈出視窗 (Modal) ---
-@st.dialog("歷史報價查詢")
+# --- 共用工具：顯示資料表格 ---
+def display_history_table(data_list):
+    if not data_list:
+        st.info("查無資料")
+        return
+
+    df = pd.DataFrame(data_list)
+    
+    # 計算折數 (單價 / 經銷價)
+    # 防呆：避免除以 0
+    def calc_ratio(row):
+        cost = row.get('經銷價', 0)
+        price = row.get('單價', 0)
+        if cost and cost > 0:
+            return f"{price / cost:.2%}"
+        return "N/A"
+
+    df['折數'] = df.apply(calc_ratio, axis=1)
+    
+    # 調整欄位順序
+    cols = ['日期', '客戶', '產品', '數量', '單價', '折數', '單號']
+    # 只顯示存在的欄位
+    display_cols = [c for c in cols if c in df.columns]
+    
+    st.dataframe(
+        df[display_cols], 
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "單價": st.column_config.NumberColumn(format="$%d"),
+            "日期": st.column_config.DateColumn(format="YYYY-MM-DD"),
+        }
+    )
+
+# --- 功能 1: 彈出視窗 (給報價單頁面用) ---
+@st.dialog("📜 歷史報價查詢")
 def show_history_modal(client_name, product_name):
-    st.subheader(f"客戶：{client_name}")
-    st.text(f"產品：{product_name}")
+    st.subheader(f"產品：{product_name}")
+    st.caption(f"查詢客戶：{client_name}")
     
-    # 初始化 Session State (用於分頁)
-    if "hist_data" not in st.session_state:
-        st.session_state.hist_data = []
-    if "hist_offset" not in st.session_state:
-        st.session_state.hist_offset = 0
-    if "hist_has_more" not in st.session_state:
-        st.session_state.hist_has_more = True
+    # 初始化 Session (只存在於這個視窗開啟期間)
+    if "modal_data" not in st.session_state:
+        st.session_state.modal_data = []
+        st.session_state.modal_offset = 0
+        st.session_state.modal_has_more = True
+        st.session_state.modal_first_load = True
 
-    # 顯示進度條
-    progress_bar = st.progress(0)
-    
     # 載入資料邏輯
-    def load_more_data():
-        progress_bar.progress(30)
+    def load_data():
+        bar = st.progress(0, text="正在連線資料庫...")
+        time.sleep(0.1) # 讓使用者有感
         
-        # 呼叫資料庫 (每次抓5筆)
-        new_data, has_more = database.fetch_history_items(
-            client_name, 
+        # 呼叫資料庫 (我們用搜尋功能，但關鍵字鎖定產品名)
+        # 這裡為了簡單，我們搜尋所有客戶買過這個產品的紀錄，讓您參考價格
+        new_data, has_more = database.search_product_history(
             product_name, 
-            offset=st.session_state.hist_offset, 
-            limit=5
+            offset=st.session_state.modal_offset, 
+            limit=5 # 彈出視窗一次載入 5 筆
         )
         
-        # 為了演示，如果資料庫沒資料，我們產生一些假資料讓您看效果
-        # (正式上線後請刪除這段假資料邏輯)
-        if not new_data and st.session_state.hist_offset == 0:
-            new_data = [
-                {"quote_date": "2023-12-01", "unit_price": 5000, "dealer_price_snapshot": 10000},
-                {"quote_date": "2023-11-15", "unit_price": 5200, "dealer_price_snapshot": 10000},
-                {"quote_date": "2023-10-20", "unit_price": 5500, "dealer_price_snapshot": 10000},
-            ]
-            has_more = False
-
-        st.session_state.hist_data.extend(new_data)
-        st.session_state.hist_offset += 5
-        st.session_state.hist_has_more = has_more
+        bar.progress(80, text="整理數據中...")
+        st.session_state.modal_data.extend(new_data)
+        st.session_state.modal_offset += 5
+        st.session_state.modal_has_more = has_more
         
-        progress_bar.progress(100)
+        bar.progress(100, text="完成！")
         time.sleep(0.2)
-        progress_bar.empty()
+        bar.empty()
+        st.session_state.modal_first_load = False
 
-    # 第一次打開自動載入
-    if len(st.session_state.hist_data) == 0:
-        load_more_data()
+    # 自動觸發第一次載入
+    if st.session_state.modal_first_load:
+        load_data()
+        st.rerun()
 
-    # 顯示表格
-    if st.session_state.hist_data:
-        df = pd.DataFrame(st.session_state.hist_data)
-        
-        # 確保有這些欄位 (防止資料庫回傳缺漏)
-        if 'dealer_price_snapshot' not in df.columns: df['dealer_price_snapshot'] = 1
-        if 'unit_price' not in df.columns: df['unit_price'] = 0
-        if 'quote_date' not in df.columns: df['quote_date'] = 'N/A'
-
-        # 計算折數
-        df['折數'] = df.apply(lambda x: f"{x['unit_price']/(x['dealer_price_snapshot'] if x['dealer_price_snapshot'] else 1):.2%}", axis=1)
-        
-        # 整理顯示欄位
-        display_df = df[['quote_date', 'unit_price', '折數']].rename(
-            columns={'quote_date': '日期', 'unit_price': '金額'}
-        )
-        st.table(display_df)
-    else:
-        st.info("查無歷史資料")
+    # 顯示內容
+    display_history_table(st.session_state.modal_data)
 
     # 載入更多按鈕
-    if st.session_state.hist_has_more:
-        if st.button("📥 載入更多 (下5筆)"):
-            load_more_data()
+    if st.session_state.modal_has_more:
+        if st.button("🔽 載入更多 (5筆)", key="btn_modal_more", use_container_width=True):
+            load_data()
             st.rerun()
-    elif st.session_state.hist_data:
-        st.caption("✅ 已達最後一筆")
+    elif st.session_state.modal_data:
+        st.caption("✅ 已顯示所有資料")
 
-# --- 2. 歷史定價比較頁面 (獨立頁面) ---
+# --- 功能 2: 歷史定價比較 (獨立頁面用) ---
 def render_price_analysis_page():
-    st.title("📊 歷史定價比較")
+    st.title("📊 歷史定價分析")
     
-    col1, col2 = st.columns([3, 1])
+    # 搜尋區
+    col1, col2 = st.columns([4, 1])
     with col1:
-        search_term = st.text_input("輸入產品名稱搜尋", placeholder="例如: FX3U")
+        keyword = st.text_input("輸入產品名稱關鍵字", placeholder="例如: FX3U", key="search_kw")
     with col2:
-        st.write("") # 排版
         st.write("")
-        do_search = st.button("🔍 搜尋", use_container_width=True)
+        st.write("")
+        do_search = st.button("🔍 搜尋", type="primary", use_container_width=True)
+
+    st.divider()
+
+    # 初始化 Session State (用於分頁記憶)
+    if "analysis_data" not in st.session_state:
+        st.session_state.analysis_data = []
+        st.session_state.analysis_offset = 0
+        st.session_state.analysis_has_more = False
+        st.session_state.last_keyword = ""
+
+    # 觸發搜尋 (重置狀態)
+    if do_search:
+        st.session_state.analysis_data = []
+        st.session_state.analysis_offset = 0
+        st.session_state.analysis_has_more = True
+        st.session_state.last_keyword = keyword
+        
+        # 執行第一次載入
+        with st.spinner("🔍 搜尋中..."):
+            new_data, has_more = database.search_product_history(keyword, offset=0, limit=10)
+            st.session_state.analysis_data = new_data
+            st.session_state.analysis_offset = 10
+            st.session_state.analysis_has_more = has_more
+
+    # 顯示結果
+    if st.session_state.analysis_data:
+        st.subheader(f"🔎 '{st.session_state.last_keyword}' 的報價紀錄")
+        display_history_table(st.session_state.analysis_data)
+        
+        # 載入更多按鈕
+        if st.session_state.analysis_has_more:
+            if st.button("🔽 載入更多 (10筆)", key="btn_page_more", use_container_width=True):
+                # 顯示進度條效果
+                bar = st.progress(0, text="載入更多資料...")
+                time.sleep(0.2)
+                
+                new_data, has_more = database.search_product_history(
+                    st.session_state.last_keyword, 
+                    offset=st.session_state.analysis_offset, 
+                    limit=10
+                )
+                
+                bar.progress(100)
+                st.session_state.analysis_data.extend(new_data)
+                st.session_state.analysis_offset += 10
+                st.session_state.analysis_has_more = has_more
+                bar.empty()
+                st.rerun()
+        else:
+            st.caption("✅ 已達最後一筆")
     
-    # 這裡可以實作跟上方類似的分頁邏輯
-    # 為了簡化，目前先顯示靜態訊息，等到資料庫有資料後再串接
-    if do_search or search_term:
-        st.info(f"正在搜尋：{search_term} ... (資料庫串接中)")
-        # 未來在這裡呼叫 database.fetch_history_items 並顯示大表格
+    elif do_search: # 有按搜尋但沒資料
+        st.warning("查無相關資料")
