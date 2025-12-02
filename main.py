@@ -113,25 +113,54 @@ if page == "📝 新增報價單":
     st.divider()
 
     # 底部：生成 PDF
-    if st.button("🖨️ 生成 PDF 報價單", type="primary", use_container_width=True):
-        pdf_data = {
-            "id": "2024-TEST-001", 
-            "date": str(quote_date),
-            "client_name": client_name,
-            "items": [
-                {"name": r["product"], "price": r["price"], "qty": r["qty"]} 
-                for r in st.session_state.rows
-            ]
-        }
+    # 底部：生成與存檔區
+    col_submit, col_status = st.columns([1, 4])
+    with col_submit:
+        # 使用 form_submit 或者是直接 button 觸發
+        submit_btn = st.button("💾 儲存並生成 PDF", type="primary", use_container_width=True)
+    
+    if submit_btn:
+        # 1. 檢查資料完整性
+        if not client_name or len(st.session_state.rows) == 0:
+            st.error("請選擇客戶並至少新增一項產品")
+            st.stop()
+
+        # 2. 呼叫資料庫存檔
+        with st.spinner("正在儲存報價單..."):
+            success, result_msg = database.save_quotation(
+                client_id=client_id,
+                date=quote_date,
+                items=st.session_state.rows,
+                total_amount=0 # 暫時不傳總金額，之後可計算
+            )
         
-        pdf_file = pdf_gen.create_quotation_pdf(pdf_data, show_stamp=show_stamp)
-        
-        st.download_button(
-            label="📥 下載 PDF 檔案",
-            data=pdf_file,
-            file_name=f"Quotation_{client_name}.pdf",
-            mime="application/pdf"
-        )
+        if success:
+            quote_no = result_msg
+            st.success(f"✅ 報價單已儲存！單號：{quote_no}")
+            
+            # 3. 準備 PDF 資料 (使用剛產生的正式單號)
+            pdf_data = {
+                "id": quote_no, 
+                "date": str(quote_date),
+                "client_name": client_name,
+                "items": [
+                    {"name": r["product"], "price": r["price"], "qty": r["qty"]} 
+                    for r in st.session_state.rows
+                ]
+            }
+            
+            # 4. 生成 PDF
+            pdf_file = pdf_gen.create_quotation_pdf(pdf_data, show_stamp=show_stamp)
+            
+            # 5. 顯示下載按鈕 (利用 key 避免重整後消失)
+            st.download_button(
+                label=f"📥 下載 {quote_no}.pdf",
+                data=pdf_file,
+                file_name=f"{quote_no}_{client_name}.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.error(f"存檔失敗: {result_msg}")
 
 # --- 頁面 2 & 3 ---
 elif page == "📊 歷史定價比較":

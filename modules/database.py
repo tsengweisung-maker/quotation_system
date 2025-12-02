@@ -76,3 +76,82 @@ def fetch_history_items(client_name, product_name, offset=0, limit=5):
         return data, has_more
     except:
         return [], False
+
+
+# --- 新增功能：報價單存檔與編號 ---
+
+from datetime import datetime
+
+def generate_quote_no():
+    """產生報價單號: YYYYMM-001 (自動遞增)"""
+    if not supabase: return "OFFLINE-001"
+    
+    # 取得當前年月
+    current_ym = datetime.now().strftime("%Y%m")
+    prefix = f"QUO-{current_ym}-"
+    
+    # 查詢資料庫中，這個月最新的單號
+    try:
+        # 搜尋符合 QUO-202512-% 的單號，依單號倒序排列，取第1筆
+        response = supabase.table("quotations")\
+            .select("quote_no")\
+            .ilike("quote_no", f"{prefix}%")\
+            .order("quote_no", desc=True)\
+            .limit(1)\
+            .execute()
+            
+        if response.data:
+            # 如果有單，取出最後三碼 + 1
+            last_no = response.data[0]['quote_no']
+            seq = int(last_no.split("-")[-1]) + 1
+        else:
+            # 如果這個月沒單，從 001 開始
+            seq = 1
+            
+        return f"{prefix}{seq:03d}"
+        
+    except Exception as e:
+        print(f"編號生成錯誤: {e}")
+        return f"{prefix}000"
+
+def save_quotation(client_id, date, items, total_amount):
+    """將報價單存入資料庫"""
+    if not supabase: return False, "資料庫未連線"
+    
+    # 1. 產生新單號
+    new_quote_no = generate_quote_no()
+    
+    try:
+        # 2. 寫入主表 (quotations)
+        main_data = {
+            "quote_no": new_quote_no,
+            "client_id": client_id,
+            "quote_date": str(date),
+            # 您可以在這裡加入 'memo' 或 'sales_rep' 等欄位
+        }
+        # 插入並回傳資料 (為了拿到自動產生的 id)
+        res_main = supabase.table("quotations").insert(main_data).execute()
+        
+        if not res_main.data:
+            return False, "主表寫入失敗"
+            
+        quotation_id = res_main.data[0]['id']
+        
+        # 3. 寫入明細表 (quotation_items)
+        items_data = []
+        for item in items:
+            items_data.append({
+                "quotation_id": quotation_id,
+                "product_name": item['product'],
+                "quantity": item['qty'],
+                "unit_price": item['price'],
+                # 這裡建議同時記錄當時的 dealer_price (需從前端傳入或這裡重查)，先暫時存 0 或傳入值
+                "dealer_price_snapshot": 0 
+            })
+            
+        supabase.table("quotation_items").insert(items_data).execute()
+        
+        return True, new_quote_no
+        
+    except Exception as e:
+        return False, str(e)
