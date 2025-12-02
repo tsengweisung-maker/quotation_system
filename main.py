@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 from modules import calculator, database, pdf_gen, ui_components
 
 # 設定頁面
@@ -13,7 +14,6 @@ def check_password():
     st.header("🔒 請登入系統")
     password = st.text_input("請輸入授權密碼", type="password")
     
-    # 防呆：如果雲端忘了設 Secrets，預設密碼 1234
     correct_password = st.secrets.get("APP_PASSWORD", "1234")
     
     if st.button("登入"):
@@ -49,23 +49,18 @@ if page == "🏠 首頁概覽":
 elif page == "📝 新增報價單":
     st.title("📝 新增報價單")
     
-    # 讀取資料
     clients_list = database.get_clients()
     raw_products = database.get_products()
     
-    # 資料轉換 (List -> Dict)
     if raw_products:
         products_map = {item['name']: item['dealer_price'] for item in raw_products}
     else:
         products_map = {}
 
-    # 【防呆重點】如果沒產品，給予提示並停止，避免當機
     if not products_map:
         st.warning("⚠️ 目前資料庫中沒有產品資料！請先前往左側「🗃️ 資料庫管理」新增產品。")
-        # 為了讓程式不報錯，我們給一個假資料讓介面可以顯示，但鎖住按鈕
         products_map = {"(無產品)": 0}
     
-    # 上半部：客戶選擇
     with st.container():
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
@@ -86,11 +81,9 @@ elif page == "📝 新增報價單":
 
     st.divider()
 
-    # 報價明細輸入
     if "rows" not in st.session_state:
         st.session_state.rows = [{"product": list(products_map.keys())[0], "price": 0, "qty": 1}]
 
-    # 表頭
     h1, h2, h3, h4, h5, h6 = st.columns([0.5, 3, 2, 2, 1.5, 1])
     h2.text("產品名稱")
     h3.text("單價")
@@ -110,7 +103,6 @@ elif page == "📝 新增報價單":
         with c4:
             qty = st.number_input(f"qt_{i}", value=int(row["qty"]), key=f"qty_input_{i}", label_visibility="collapsed")
 
-        # 警示
         if dealer_ref_price > 0 and price > 0:
             ratio = price / dealer_ref_price
             if ratio < 0.6:
@@ -133,7 +125,6 @@ elif page == "📝 新增報價單":
 
     st.divider()
 
-    # 生成按鈕
     if st.button("💾 儲存並生成 PDF", type="primary", use_container_width=True):
         if not client_name or "(無產品)" in [r['product'] for r in st.session_state.rows]:
             st.error("資料不完整，無法存檔")
@@ -172,7 +163,6 @@ elif page == "🗃️ 資料庫管理":
                     df = pd.read_excel(uploaded_file)
                 
                 st.write("預覽 (前5筆):")
-                # 隱藏 NO 欄位
                 preview_df = df.head().copy()
                 cols_hide = [c for c in preview_df.columns if "NO" in str(c).upper() or "訂購" in str(c)]
                 st.dataframe(preview_df.drop(columns=cols_hide, errors='ignore'))
@@ -180,21 +170,34 @@ elif page == "🗃️ 資料庫管理":
                 if st.button("🚀 確認匯入"):
                     with st.spinner("寫入中..."):
                         success, msg = database.batch_import_products(df)
-                    
-                    # 注意：這兩行必須縮排在 button 的 if 裡面，但要在 spinner 外面
-                    if success: 
-                        st.success(msg)
-                        time.sleep(2)
-                        st.rerun()
-                    else: 
-                        st.error(msg)
+                        if success: 
+                            st.success(msg)
+                            time.sleep(2)
+                            st.rerun()
+                        else: 
+                            st.error(msg)
             except Exception as e:
                 st.error(f"讀取錯誤: {e}")
+
+        st.divider()
+        st.subheader("手動新增")
+        with st.form("add_prod"):
+            c1, c2 = st.columns([3, 2])
+            nm = c1.text_input("產品名稱")
+            sp = c1.text_input("規格")
+            pr = c2.number_input("價格", step=100)
+            if st.form_submit_button("新增"):
+                if nm: database.add_product(nm, sp, pr); st.success("已新增"); st.rerun()
+        
+        st.subheader("現有產品")
+        st.dataframe(database.get_products(), use_container_width=True)
 
     with tab2:
         with st.form("add_cli"):
             nm = st.text_input("公司名稱")
+            tax = st.text_input("統一編號")
+            cont = st.text_input("聯絡人")
             if st.form_submit_button("新增"):
-                if nm: database.add_client(nm, "", "", "", ""); st.success("已新增"); st.rerun()
+                if nm: database.add_client(nm, tax, cont, "", ""); st.success("已新增"); st.rerun()
         st.subheader("現有客戶")
         st.dataframe(database.get_clients(), use_container_width=True)
