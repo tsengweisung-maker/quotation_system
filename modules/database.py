@@ -171,3 +171,45 @@ def get_dashboard_stats():
         return total_quotes, total_amount
     except:
         return 0, 0
+
+# --- 批次匯入功能 ---
+
+def batch_import_products(df):
+    """
+    將 Pandas DataFrame 批次寫入 products 表
+    預期 Excel 欄位: ['品名', '規格', '價格']
+    """
+    if not supabase: return False, "資料庫未連線"
+    
+    try:
+        # 1. 欄位對照 (Excel中文 -> 資料庫英文)
+        # 為了容錯，我們允許使用者欄位名稱有一點點誤差
+        rename_map = {
+            "品名": "name", "產品名稱": "name", "產品": "name",
+            "規格": "spec", "規格說明": "spec",
+            "價格": "dealer_price", "單價": "dealer_price", "成本": "dealer_price", "經銷價": "dealer_price"
+        }
+        
+        # 重新命名欄位
+        df = df.rename(columns=rename_map)
+        
+        # 2. 檢查必要欄位是否存在
+        required_cols = ["name", "dealer_price"]
+        if not all(col in df.columns for col in required_cols):
+            return False, f"Excel 缺少必要欄位，請確保有包含：{required_cols} (或對應的中文)"
+            
+        # 3. 補上選填欄位 (如果沒填規格，就補空字串)
+        if "spec" not in df.columns:
+            df["spec"] = ""
+            
+        # 4. 轉換資料格式 (Pandas 轉 List of Dicts)
+        # 只取我們需要的欄位，避免寫入錯誤
+        records = df[["name", "spec", "dealer_price"]].to_dict(orient="records")
+        
+        # 5. 寫入 Supabase
+        supabase.table("products").insert(records).execute()
+        
+        return True, f"成功匯入 {len(records)} 筆產品！"
+        
+    except Exception as e:
+        return False, str(e)

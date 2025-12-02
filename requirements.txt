@@ -2,3 +2,4 @@ streamlit
 supabase
 reportlab
 pandas
+openpyxl

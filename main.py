@@ -203,7 +203,46 @@ elif page == "🗃️ 資料庫管理":
     
     tab1, tab2 = st.tabs(["📦 產品管理", "👥 客戶管理"])
     
+    # --- 產品管理頁籤 ---
     with tab1:
+        st.subheader("批次匯入產品 (Excel/CSV)")
+        
+        # 下載範例檔的提示
+        st.info("💡 提示：請上傳 .xlsx 檔案，第一列標題需包含：『品名』、『規格』、『價格』")
+        
+        # 檔案上傳元件
+        uploaded_file = st.file_uploader("拖曳檔案到此處", type=["xlsx", "xls", "csv"])
+        
+        if uploaded_file:
+            try:
+                # 讀取 Excel
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    df = pd.read_excel(uploaded_file)
+                
+                # 顯示預覽
+                st.write("預覽資料 (前 5 筆):")
+                st.dataframe(df.head())
+                
+                # 確認匯入按鈕
+                if st.button("🚀 確認匯入資料庫", type="primary"):
+                    with st.spinner("正在寫入資料庫..."):
+                        success, msg = database.batch_import_products(df)
+                    
+                    if success:
+                        st.success(msg)
+                        time.sleep(2)
+                        st.rerun() # 重新整理看結果
+                    else:
+                        st.error(f"匯入失敗: {msg}")
+                        
+            except Exception as e:
+                st.error(f"檔案讀取錯誤: {e}")
+
+        st.divider()
+        st.subheader("手動新增產品")
+        # ... (以下保留原本的手動新增功能) ...
         with st.form("add_product_form", clear_on_submit=True):
             col1, col2 = st.columns([3, 2])
             new_p_name = col1.text_input("產品型號/名稱")
@@ -216,6 +255,8 @@ elif page == "🗃️ 資料庫管理":
                     st.success("已新增")
                     st.rerun()
         
+        st.divider()
+        st.subheader("現有產品列表")
         st.dataframe(database.get_products(), use_container_width=True)
 
     with tab2:
